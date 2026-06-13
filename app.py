@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import folium
 from streamlit_folium import st_folium
-from folium.plugins import Draw
+from folium.plugins import Draw, HeatMap
 
 st.set_page_config(page_title="Miri Environmental Twin", layout="wide")
 st.title("🏙️ Miri Spatial SimCity Twin Engine")
@@ -25,58 +25,62 @@ blueprint_type = st.sidebar.selectbox(
     ["Dense Concrete Skyscraper Grid (High Heat Retention)", "Urban Green Canopy Park (Cooling Infrastructure)"]
 )
 
-# 3. Generate a permanent 20x20 Background Grid for the Entirety of Miri
+# 3. High-Performance Macro Baseline Generator (The Whole Map of Miri)
 @st.cache_data
 def generate_base_miri_heatmap():
-    # Bounds matching Miri city limits
-    lat_range = np.linspace(4.34, 4.45, 20)
-    lon_range = np.linspace(113.94, 114.04, 20)
+    # Create a dense mesh of geographic points over the entirety of Miri
+    lat_points = np.linspace(4.32, 4.46, 35)
+    lon_points = np.linspace(113.93, 114.05, 35)
     
-    base_cells = []
     matrix_rows = []
-    
-    # Assume Miri's current structural baseline: moderate concrete (0.25), moderate trees (0.25)
+    # Moderate baseline urban metrics: 25% concrete, 25% green canopy
     base_ndvi, base_ndbi = 0.25, 0.25
     base_ratio = base_ndbi / (base_ndvi + 1e-5)
     
-    for i in range(len(lat_range)-1):
-        for j in range(len(lon_range)-1):
-            c_lat = (lat_range[i] + lat_range[i+1]) / 2.0
-            c_lon = (lon_range[j] + lon_range[j+1]) / 2.0
+    for lat in lat_points:
+        for lon in lon_points:
+            matrix_rows.append([base_ndvi, base_ndbi, base_ratio, lon, lat])
             
-            matrix_rows.append([base_ndvi, base_ndbi, base_ratio, c_lon, c_lat])
-            base_cells.append({
-                'bounds': [[lat_range[i], lon_range[j]], [lat_range[i+1], lon_range[j+1]]],
-                'is_modified': False
+    # Run rapid parallel predictions through the Random Forest model
+    predicted_temps = ai_model.predict(np.array(matrix_rows))
+    
+    # Construct a lightweight, fast pandas dataframe for the mapping layer
+    raw_data = []
+    idx = 0
+    for lat in lat_points:
+        for lon in lon_points:
+            raw_data.append({
+                'lat': lat,
+                'lon': lon,
+                'temp': float(predicted_temps[idx])
             })
+            idx += 1
             
-    # Run structural baseline predictions through your AI model
-    predicted_base_temps = ai_model.predict(np.array(matrix_rows))
-    for idx, temp in enumerate(predicted_base_temps):
-        base_cells[idx]['temp'] = temp
-        
-    return base_cells
+    return pd.DataFrame(raw_data)
 
-# Initialize Miri's global background map data into state memory
-if 'miri_global_map' not in st.session_state:
-    st.session_state.miri_global_map = generate_base_miri_heatmap()
+# Initialize global state variables to store calculations across interface refreshes
+if 'miri_global_df' not in st.session_state:
+    st.session_state.miri_global_df = generate_base_miri_heatmap()
 
-if 'last_sim_data' not in st.session_state:
-    st.session_state.last_sim_data = None
+if 'active_modifications' not in st.session_state:
+    st.session_state.active_modifications = []
 
 # 4. Set Feature Mapping variables using the exact mathematical order your AI expects
-# Order: NDVI (index 0), NDBI (index 1)
+# Correct AI training feature order: [NDVI, NDBI, Ratio, Longitude, Latitude]
 if blueprint_type == "Dense Concrete Skyscraper Grid (High Heat Retention)":
-    current_ndvi = 0.02  # Almost zero foliage
-    current_ndbi = 0.55  # Dense structural concrete footprint
+    current_ndvi = 0.02  # Low foliage
+    current_ndbi = 0.55  # High concrete index
 else:
-    current_ndvi = 0.65  # Rich forest canopy index
-    current_ndbi = -0.05 # Low built-up structure score
+    current_ndvi = 0.65  # Rich vegetation canopy
+    current_ndbi = -0.05 # Low concrete score
 
-# 5. Build the Dynamic Mapping Object Frame
-m = folium.Map(location=[4.393, 113.993], zoom_start=13, tiles="OpenStreetMap")
+# Calculate interaction feature for the AI model
+current_ratio = current_ndbi / (current_ndvi + 1e-5)
 
-# Attach Drawing Toolbar System
+# 5. Build a clean Base Map centered over Miri City Centre
+m = folium.Map(location=[4.393, 113.993], zoom_start=13, tiles="CartoDB positron")
+
+# Inject Toolbar controls
 draw_control = Draw(
     export=False,
     position='topleft',
@@ -84,98 +88,86 @@ draw_control = Draw(
 )
 draw_control.add_to(m)
 
-# 6. RENDER MASTER LAYER HOOK: Draw the whole city map layout combining baseline and user shapes
-# Loop through the base elements tracking the whole city footprint
-for cell in st.session_state.miri_global_map:
-    cell_bounds = cell['bounds']
-    cell_temp = cell['temp']
-    
-    # Check if a custom blueprint footprint overrides this specific cell block coordinate
-    if st.session_state.last_sim_data is not None:
-        for mod_cell in st.session_state.last_sim_data:
-            # Simple spatial intersection check: see if centers align roughly
-            if (mod_cell['bounds'][0][0] >= cell_bounds[0][0] and mod_cell['bounds'][1][0] <= cell_bounds[1][0] and
-                mod_cell['bounds'][0][1] >= cell_bounds[0][1] and mod_cell['bounds'][1][1] <= cell_bounds[1][1]):
-                cell_temp = mod_cell['temp']
-                cell['is_modified'] = True
+# 6. Deep-Copy Baseline DataFrame to inject real-time changes
+working_df = st.session_state.miri_global_df.copy()
 
-    # Color Scale Mapping for Miri: Sharp visualization gradient adjustments
-    if cell_temp > 37.0:
-        fill_color = '#d73027'   # Severe Heat Zone (Red)
-    elif cell_temp > 34.0:
-        fill_color = '#fdae61'   # Urbanized Warm Zone (Orange)
-    elif cell_temp > 31.0:
-        fill_color = '#fee090'   # Mild Thermal Step (Yellow)
-    else:
-        fill_color = '#1a9850'   # Regenerated Cool Zone (Green)
+# If the user has drawn custom modifications, override those coordinate values in our tracking dataframe
+if st.session_state.active_modifications:
+    for mod in st.session_state.active_modifications:
+        min_lon, max_lon, min_lat, max_lat = mod['bounds']
+        
+        # Identify all points in the city dataframe that fall inside the user's custom drawn blueprint boundary
+        mask = (
+            (working_df['lon'] >= min_lon) & (working_df['lon'] <= max_lon) &
+            (working_df['lat'] >= min_lat) & (working_df['lat'] <= max_lat)
+        )
+        
+        # If any matching points are found, run the new conditions through the AI model
+        if working_df[mask].shape[0] > 0:
+            override_rows = []
+            for _, row in working_df[mask].iterrows():
+                # Correct feature lineup: [NDVI, NDBI, Ratio, Longitude, Latitude]
+                override_rows.append([current_ndvi, current_ndbi, current_ratio, row['lon'], row['lat']])
+            
+            # Predict the modified temperature values instantly
+            new_predictions = ai_model.predict(np.array(override_rows))
+            working_df.loc[mask, 'temp'] = new_predictions
 
-    folium.Rectangle(
-        bounds=cell_bounds,
-        color=fill_color,
-        fill=True,
-        fill_color=fill_color,
-        fill_opacity=0.45 if not cell.get('is_modified') else 0.75, # Make user modifications look bolder
-        weight=0.5,
-        popup=f"Temp: {cell_temp:.1f}°C"
-    ).add_to(m)
+# 7. HIGH-PERFORMANCE MAP RENDER HOOK: Render a smooth, un-grid-like geographical heatmap
+# We scale the intensity value (temp - 22) so that heat signatures pop vividly on the screen
+heat_data = [[row['lat'], row['lon'], float(row['temp'] - 22)] for _, row in working_df.iterrows()]
 
-# 7. Render Layout Split Frame Windows
+HeatMap(
+    heat_data,
+    radius=30,
+    blur=18,
+    max_zoom=13,
+    gradient={0.3: '#1a9850', 0.55: '#fee090', 0.75: '#fdae61', 1.0: '#d73027'} # Smooth Green -> Yellow -> Red gradient
+).add_to(m)
+
+# 8. Render App Layout Windows Split
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    output_map = st_folium(m, width=900, height=600, key="miri_sim_map_v2")
+    output_map = st_folium(m, width=900, height=600, key="miri_highres_sim_map")
 
-# 8. Core Intercept Logic: Catch drawn shapes and feed them through the correct feature channels
+# 9. Catch drawn blueprint coordinates and feed them to the system live
 if output_map and output_map.get("last_active_drawing"):
     geometry = output_map["last_active_drawing"]["geometry"]
     
     if geometry["type"] in ["Polygon", "Rectangle"]:
         coords = geometry["coordinates"][0]
-        df_coords = pd.DataFrame(coords, columns=['Longitude', 'Latitude'])
+        df_bounds = pd.DataFrame(coords, columns=['Longitude', 'Latitude'])
         
-        min_lon, max_lon = df_coords['Longitude'].min(), df_coords['Longitude'].max()
-        min_lat, max_lat = df_coords['Latitude'].min(), df_coords['Latitude'].max()
+        # Define the box parameters
+        drawn_bounds = [
+            df_bounds['Longitude'].min(),
+            df_bounds['Longitude'].max(),
+            df_bounds['Latitude'].min(),
+            df_bounds['Latitude'].max()
+        ]
         
-        # FIXED CONFIGURATION: Upgraded tracking loop matrix to a detailed 12x12 micro-grid
-        UPGRADED_GRID_STEPS = 12
-        lon_steps = np.linspace(min_lon, max_lon, UPGRADED_GRID_STEPS)
-        lat_steps = np.linspace(min_lat, max_lat, UPGRADED_GRID_STEPS)
-        
-        new_sim_cells = []
-        matrix_rows = []
-        
-        for i in range(len(lat_steps)-1):
-            for j in range(len(lon_steps)-1):
-                c_lat = (lat_steps[i] + lat_steps[i+1]) / 2.0
-                c_lon = (lon_steps[j] + lon_steps[j+1]) / 2.0
-                ratio = current_ndbi / (current_ndvi + 1e-5)
-                
-                # FIXED CRITICAL BUG: Verified index array order perfectly matches the AI's training configuration!
-                # Array order: [NDVI, NDBI, Ratio, Longitude, Latitude]
-                matrix_rows.append([current_ndvi, current_ndbi, ratio, c_lon, c_lat])
-                new_sim_cells.append({
-                    'bounds': [[lat_steps[i], lon_steps[j]], [lat_steps[i+1], lon_steps[j+1]]]
-                })
-                
-        predicted_temps = ai_model.predict(np.array(matrix_rows))
-        
-        for idx, temp in enumerate(predicted_temps):
-            new_sim_cells[idx]['temp'] = temp
-            
-        st.session_state.last_sim_data = new_sim_cells
+        # Add this footprint area modification into state history memory
+        st.session_state.active_modifications.append({'bounds': drawn_bounds})
         st.rerun()
 
-# 9. Sidebar Metric Readouts Module
+# 10. Render Sidebar Statistics Metrics Panel Module
 with col2:
     st.subheader("📊 Climate Analytics")
-    all_city_temps = [c['temp'] for c in st.session_state.miri_global_map]
-    city_avg = np.mean(all_city_temps)
+    city_avg_temp = working_df['temp'].mean()
     
-    st.metric(label="Miri Municipality Mean Temp", value=f"{city_avg:.2f} °C")
+    st.metric(label="Miri Municipality Mean Temp", value=f"{city_avg_temp:.2f} °C")
     
     st.markdown("---")
-    st.markdown("*System Framework Status:*")
-    if city_avg > 35.0:
-        st.error("🚨 Urban Grid exceeding target climate boundaries. Immediate canopy buffers required.")
+    st.markdown("*Infrastructure Framework Advisory:*")
+    if city_avg_temp > 35.5:
+        st.error("🚨 *CRITICAL OVERHEAT ZONE*\n\nConcrete levels have pushed regional grids past thermal safety bounds. Plant trees immediately to stabilize microclimate pockets.")
+    elif city_avg_temp > 32.5:
+        st.warning("⚠️ *WARMING GRADIENT OBSERVED*\n\nModerate thermal tracking profile. Recommend introducing reflective surfaces or green balconies.")
     else:
-        st.success("🌲 Adaptation balance verified. Structural layout matches regional stability bounds.")
+        st.success("🌲 *CLIMATE RESILIENT MATRIX*\n\nVegetation distribution index successfully absorbs incoming solar radiation, keeping Miri safe.")
+        
+    # Quick clear button to completely reset modifications
+    if st.button("Reset City Blueprint Landscape"):
+        st.session_state.active_modifications = []
+        st.rerun()
