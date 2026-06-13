@@ -60,50 +60,36 @@ if blueprint_type == "Dense Concrete Skyscraper Grid (High Heat Retention)":
 else:
     target_ndvi, target_ndbi = 0.65, -0.05
 
-# --- MODULE 4: GEOGRAPHIC GRID & SATELLITE REALISM ENGINE ---
+# --- MODULE 4: GEOGRAPHIC GRID & PRE-BAKED SATELLITE REALISM ENGINE ---
 LAT_MIN, LAT_MAX = 4.30, 4.53  
 LON_MIN, LON_MAX = 113.92, 114.05  
 GRID_SIZE = 35 
 
 @st.cache_data
-def load_real_miri_base_layers(csv_path, grid_size, lat_min, lat_max, lon_min, lon_max):
-    """Parses GEE satellite data rows into the interactive SimCity memory matrix."""
+def load_prebaked_miri_layers(csv_path, grid_size):
+    """Loads the pre-collapsed satellite layer matrix for instant boot times."""
+    # Healthy vegetation/concrete defaults for any missing border tiles
+    initial_ndvi = np.full((grid_size, grid_size), 0.20)
+    initial_ndbi = np.full((grid_size, grid_size), 0.10)
+    
     try:
-        df = pd.read_csv(csv_path).dropna()
-        
-        # Build index tracking lines
-        lat_bins = np.linspace(lat_min, lat_max, grid_size)
-        lon_bins = np.linspace(lon_min, lon_max, grid_size)
-        
-        # Safe structural defaults if data points are sparse in coastal edges
-        initial_ndvi = np.full((grid_size, grid_size), 0.20)
-        initial_ndbi = np.full((grid_size, grid_size), 0.10)
-        
-        # Align coordinate points cleanly to matrix slots
-        df['lat_idx'] = np.clip(np.searchsorted(lat_bins, df['Latitude']) - 1, 0, grid_size - 1)
-        df['lon_idx'] = np.clip(np.searchsorted(lon_bins, df['Longitude']) - 1, 0, grid_size - 1)
-        
-        # Average matching pixels inside each specific cell block
-        grid_summary = df.groupby(['lat_idx', 'lon_idx'])[['NDVI', 'NDBI']].mean().reset_index()
-        
-        for _, row in grid_summary.iterrows():
+        df = pd.read_csv(csv_path)
+        for _, row in df.iterrows():
             r, c = int(row['lat_idx']), int(row['lon_idx'])
             initial_ndvi[r, c] = row['NDVI']
             initial_ndbi[r, c] = row['NDBI']
-            
-        return initial_ndvi, initial_ndbi
     except Exception:
-        # Emergency backup fallback if the CSV isn't committed alongside code
-        return np.full((grid_size, grid_size), 0.25), np.full((grid_size, grid_size), 0.25)
+        # Fallback safeguard matrix if file path fails
+        pass
+        
+    return initial_ndvi, initial_ndbi
 
-# Seed the canvas using real-world satellite measurements
+# Initialize canvas memory tracks using our lightweight asset
 if 'ndvi_layer' not in st.session_state or st.session_state.ndvi_layer.shape != (GRID_SIZE, GRID_SIZE):
-    real_ndvi, real_ndbi = load_real_miri_base_layers(
-        'Miri_Upgraded_AI_Data_2026.csv', GRID_SIZE, LAT_MIN, LAT_MAX, LON_MIN, LON_MAX
-    )
+    real_ndvi, real_ndbi = load_prebaked_miri_layers('miri_base_grid.csv', GRID_SIZE)
     st.session_state.ndvi_layer = real_ndvi
     st.session_state.ndbi_layer = real_ndbi
-
+    
 # Auto-heal state management system to prevent shape layout mismatches or memory crashes
 if 'ndvi_layer' not in st.session_state or st.session_state.ndvi_layer.shape != (GRID_SIZE, GRID_SIZE):
     st.session_state.ndvi_layer = np.full((GRID_SIZE, GRID_SIZE), 0.25)
