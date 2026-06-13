@@ -165,7 +165,7 @@ col1, col2 = st.columns([3, 1])
 with col1:
     output_map = st_folium(m, width=900, height=600, key="miri_nrt_overlay_engine")
 
-# --- MODULE 9: INTERACTION COORDINATE CAPTURE LOOP ---
+# --- MODULE 9: INTERACTION COORDINATE CAPTURE LOOP (WITH SPATIAL BLENDING) ---
 if output_map and output_map.get("last_active_drawing"):
     geometry = output_map["last_active_drawing"]["geometry"]
     
@@ -176,15 +176,27 @@ if output_map and output_map.get("last_active_drawing"):
         min_lon, max_lon = df_bounds['Longitude'].min(), df_bounds['Longitude'].max()
         min_lat, max_lat = df_bounds['Latitude'].min(), df_bounds['Latitude'].max()
         
-        # Translate real world coordinates into matrix index slots (0 to GRID_SIZE)
+        # Translate real world coordinates into matrix index slots
         lon_idx_min = int(np.clip((min_lon - LON_MIN) / (LON_MAX - LON_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
         lon_idx_max = int(np.clip((max_lon - LON_MIN) / (LON_MAX - LON_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
         lat_idx_min = int(np.clip((min_lat - LAT_MIN) / (LAT_MAX - LAT_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
         lat_idx_max = int(np.clip((max_lat - LAT_MIN) / (LAT_MAX - LAT_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
         
         if (lon_idx_max >= lon_idx_min) and (lat_idx_max >= lat_idx_min):
-            st.session_state.ndvi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = target_ndvi
-            st.session_state.ndbi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = target_ndbi
+            # Define how much impact the new blueprint has on the 650m cell (30% impact)
+            blend_factor = 0.30 
+            
+            # Grab the existing real-world satellite values currently in those cells
+            current_ndvi_chunk = st.session_state.ndvi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1]
+            current_ndbi_chunk = st.session_state.ndbi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1]
+            
+            # Apply proportional blending: (70% of what was already there) + (30% of your new addition)
+            st.session_state.ndvi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = \
+                (current_ndvi_chunk * (1 - blend_factor)) + (target_ndvi * blend_factor)
+                
+            st.session_state.ndbi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = \
+                (current_ndbi_chunk * (1 - blend_factor)) + (target_ndbi * blend_factor)
+            
             st.rerun()
 
 # --- MODULE 10: ANALYTICS REPORTING PROFILE ---
