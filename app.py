@@ -28,9 +28,9 @@ blueprint_type = st.sidebar.selectbox(
 )
 
 # 3. Establish High-Resolution Grid Tracking Limits (Miri Boundaries)
-LAT_MIN, LAT_MAX = 4.32, 4.46
-LON_MIN, LON_MAX = 113.93, 114.05
-GRID_SIZE = 30 # 30x30 resolution mesh matrix 
+LAT_MIN, LAT_MAX = 4.30, 4.53
+LON_MIN, LON_MAX = 113.92, 114.05
+GRID_SIZE = 35 # 30x30 resolution mesh matrix 
 
 # Initialize persistent matrix layers directly inside state memory
 if 'ndvi_layer' not in st.session_state:
