@@ -83,8 +83,8 @@ im = ax.imshow(
     cmap='turbo', 
     interpolation='bicubic', 
     origin='lower',
-    vmin=min_grid_temp, 
-    vmax=max_grid_temp
+    vmin=32.0, 
+    vmax=41.0
 )
 
 # Render the layout directly into an in-memory transparent PNG byte buffer
