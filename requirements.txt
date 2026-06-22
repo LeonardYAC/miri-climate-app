@@ -3,5 +3,6 @@ pandas
 numpy
 requests
 scikit-learn
-pydeck
+folium
+streamlit-folium
 matplotlib
