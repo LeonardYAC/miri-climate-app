@@ -117,22 +117,28 @@ if 'ndvi_layer' not in st.session_state or st.session_state.ndvi_layer.shape != 
 # Prevent division-by-zero errors in areas with minimal canopy footprint
 ratio_layer = st.session_state.ndbi_layer / (st.session_state.ndvi_layer + 1e-5)
 
-# Build feature matrix matching exactly what the random forest regressor expects
+# Build feature matrix
 features_matrix = np.stack([
     st.session_state.ndvi_layer.flatten(),
     st.session_state.ndbi_layer.flatten(),
     ratio_layer.flatten()
 ], axis=1)
 
-# Predict across the expanded spatial web canvas simultaneously
-predicted_flat = ai_model.predict(features_matrix)
+# FIX: Convert the numpy array to a DataFrame with explicit feature names
+# IMPORTANT: Make sure these names perfectly match the column headers used in your training script!
+features_df = pd.DataFrame(
+    features_matrix, 
+    columns=['ndvi', 'ndbi', 'ratio']  # If you used uppercase or different names during training, change them here
+)
+
+# Predict using the named DataFrame instead of the raw array
+predicted_flat = ai_model.predict(features_df)
 predicted_grid = predicted_flat.reshape((GRID_SIZE, GRID_SIZE))
 
-# Dynamic Delta Calculation: Map AI structural variances relative to the Live Weather Feed
+# Dynamic Delta Calculation
 ai_baseline_mean = np.mean(predicted_grid)  
 spatial_deviations = predicted_grid - ai_baseline_mean
 nrt_final_heatmap = projected_base_temp + spatial_deviations
-
 # --- MODULE 6: HEATMAP RENDER SPECTRUM CREATION (GREEN -> RED) ---
 fig, ax = plt.subplots(figsize=(8, 8))
 ax.axis('off')
