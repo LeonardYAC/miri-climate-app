@@ -28,6 +28,7 @@ def load_model():
 ai_model = load_model()
 
 # --- MODULE 2: NRT WEATHER API INTEGRATION ---
+# --- MODULE 2: NRT WEATHER API INTEGRATION (FIXED INDEXING) ---
 @st.cache_data(ttl=600)  # Cache weather data for 10 minutes to remain performant
 def fetch_miri_nrt_weather():
     """Fetches real-time baseline ambient temperatures for Miri Municipality."""
@@ -36,11 +37,28 @@ def fetch_miri_nrt_weather():
         url = "https://api.open-meteo.com/v1/forecast?latitude=4.393&longitude=113.993&current=temperature_2m&hourly=temperature_2m&timezone=Asia/Singapore"
         response = requests.get(url).json()
         live_temp = response['current']['temperature_2m']
-        hourly_forecasts = response['hourly']['temperature_2m'][:24] # Extract next 24 hours
+        
+        current_time_str = response['current']['time']  # e.g., "2026-06-24T15:00"
+        hourly_times = response['hourly']['time']
+        hourly_temps = response['hourly']['temperature_2m']
+        
+        # Strip minutes to safely match the top of the hour string
+        target_hour_str = current_time_str.split(":")[0]
+        
+        # Find the index where the API's hourly tracking matches right now
+        current_idx = 0
+        for i, time_step in enumerate(hourly_times):
+            if time_step.startswith(target_hour_str):
+                current_idx = i
+                break
+                
+        # Slice the next 24 hours starting FROM NOW, instead of from midnight
+        hourly_forecasts = hourly_temps[current_idx : current_idx + 24]
         return live_temp, hourly_forecasts
+
     except Exception:
-        # Smart fallback baseline if the server loses internet connectivity
-        return 31.5, [30.0 + np.sin(h/24 * 2 * np.pi) * 4 for h in range(24)]
+        # Smart fallback baseline adjusted to match standard diurnal cycle starting at 3 PM (Hour 15)
+        return 31.5, [30.0 + np.sin((h + 15)/24 * 2 * np.pi) * 4 for h in range(24)]
 
 live_base_temp, future_hourly_temps = fetch_miri_nrt_weather()
 
