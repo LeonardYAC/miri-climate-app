@@ -14,9 +14,9 @@ from folium.plugins import Draw
 # --- MODULE 1: APP INITIALIZATION & CONFIGURATION ---
 st.set_page_config(page_title="Miri Environmental Twin", page_icon="🏙️", layout="wide", initial_sidebar_state="expanded")
 
-st.title("🏙️ Miri Spatial SimCity Twin Engine")
-st.markdown("### Near Real-Time (NRT) Microclimate Predictive Framework")
-st.caption("Interact with the urban grid to simulate structural changes and analyze localized thermal impacts.")
+st.title("Miri ClimateSense AI")
+st.markdown("NRT Climate Prediction")
+st.caption("Interact with the map to simulate temperature changes by adding buildings/forests.")
 st.divider()
 
 # Load the upgraded, coordinate-free AI brain model (Expects: NDVI, NDBI, Ratio)
@@ -64,11 +64,11 @@ live_base_temp, future_hourly_temps = fetch_miri_nrt_weather()
 
 # --- MODULE 3: SIDEBAR CONTROL PANEL ---
 with st.sidebar:
-    st.header("⏱️ NRT Temporal Controls")
-    forecast_hour = st.slider("Predictive Forecast Horizon (Hours):", 0, 12, 0)
+    st.header("Time Controls")
+    forecast_hour = st.slider("Time fron Now (Hours):", 0, 12, 0)
     projected_base_temp = future_hourly_temps[forecast_hour]
     
-    st.info(f"**Baseline City Temp at Horizon:** {projected_base_temp:.1f}°C")
+    st.info(f"**Scheduled Forecast:** {projected_base_temp:.1f}°C")
     st.divider()
     
     st.header("🕹️ Object Blueprint Settings")
@@ -274,7 +274,7 @@ with col2:
         
     # NEW: Dedicated container display block for the spot-inspection tool
     with st.container(border=True):
-        st.markdown("🎯 **Localized Target Inspector**")
+        st.markdown("**Temperature at this Point:**")
         if "clicked_data" in st.session_state and st.session_state.clicked_data:
             inspected_temp = st.session_state.clicked_data['temp']
             st.markdown(f"**Inspected Temp:** `{inspected_temp:.2f} °C`")
