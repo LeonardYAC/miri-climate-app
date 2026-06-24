@@ -7,13 +7,17 @@ import io
 import requests
 import base64
 import matplotlib.pyplot as plt
+import branca.colormap as cm
 from streamlit_folium import st_folium
 from folium.plugins import Draw
 
 # --- MODULE 1: APP INITIALIZATION & CONFIGURATION ---
-st.set_page_config(page_title="Miri Environmental Twin", layout="wide")
+st.set_page_config(page_title="Miri Environmental Twin", page_icon="🏙️", layout="wide", initial_sidebar_state="expanded")
+
 st.title("🏙️ Miri Spatial SimCity Twin Engine")
 st.markdown("### Near Real-Time (NRT) Microclimate Predictive Framework")
+st.caption("Interact with the urban grid to simulate structural changes and analyze localized thermal impacts.")
+st.divider()
 
 # Load the upgraded, coordinate-free AI brain model (Expects: NDVI, NDBI, Ratio)
 @st.cache_resource
@@ -35,40 +39,41 @@ def fetch_miri_nrt_weather():
         hourly_forecasts = response['hourly']['temperature_2m'][:24] # Extract next 24 hours
         return live_temp, hourly_forecasts
     except Exception:
-        # Smart fallback baseline if the server loses internet connectivity during presentation
+        # Smart fallback baseline if the server loses internet connectivity
         return 31.5, [30.0 + np.sin(h/24 * 2 * np.pi) * 4 for h in range(24)]
 
 live_base_temp, future_hourly_temps = fetch_miri_nrt_weather()
 
 # --- MODULE 3: SIDEBAR CONTROL PANEL ---
-st.sidebar.header("⏱️ NRT Temporal Controls")
-forecast_hour = st.sidebar.slider("Predictive Forecast Horizon (Hours from Now):", 0, 12, 0)
-projected_base_temp = future_hourly_temps[forecast_hour]
+with st.sidebar:
+    st.header("⏱️ NRT Temporal Controls")
+    forecast_hour = st.slider("Predictive Forecast Horizon (Hours):", 0, 12, 0)
+    projected_base_temp = future_hourly_temps[forecast_hour]
+    
+    st.info(f"**Baseline City Temp at Horizon:** {projected_base_temp:.1f}°C")
+    st.divider()
+    
+    st.header("🕹️ Object Blueprint Settings")
+    blueprint_type = st.selectbox(
+        "Select Structural Placement Material:",
+        ["Dense Concrete Skyscraper Grid (High Heat Retention)", "Urban Green Canopy Park (Cooling Infrastructure)"]
+    )
 
-st.sidebar.markdown(f"Baseline City Temp at Horizon: {projected_base_temp:.1f}°C")
-st.sidebar.write("---")
+    # Extract target materials based on sidebar selection
+    if blueprint_type == "Dense Concrete Skyscraper Grid (High Heat Retention)":
+        target_ndvi, target_ndbi = 0.02, 0.55
+    else:
+        target_ndvi, target_ndbi = 0.65, -0.05
 
-st.sidebar.header("🕹️ Object Blueprint Settings")
-blueprint_type = st.sidebar.selectbox(
-    "Select Structural Placement Material:",
-    ["Dense Concrete Skyscraper Grid (High Heat Retention)", "Urban Green Canopy Park (Cooling Infrastructure)"]
-)
-
-# Extract target materials based on sidebar selection
-if blueprint_type == "Dense Concrete Skyscraper Grid (High Heat Retention)":
-    target_ndvi, target_ndbi = 0.02, 0.55
-else:
-    target_ndvi, target_ndbi = 0.65, -0.05
-
-# --- MODULE 4: GEOGRAPHIC GRID & PRE-BAKED SATELLITE REALISM ENGINE ---
-LAT_MIN, LAT_MAX = 4.30, 4.53  
-LON_MIN, LON_MAX = 113.92, 114.05  
+# --- MODULE 4: GEOGRAPHIC GRID & STATE MANAGEMENT ---
+# EXPANDED BOUNDS: Increased the geographic catch-area for the map
+LAT_MIN, LAT_MAX = 4.25, 4.58  
+LON_MIN, LON_MAX = 113.88, 114.12  
 GRID_SIZE = 35 
 
 @st.cache_data
 def load_prebaked_miri_layers(csv_path, grid_size):
     """Loads the pre-collapsed satellite layer matrix for instant boot times."""
-    # Healthy vegetation/concrete defaults for any missing border tiles
     initial_ndvi = np.full((grid_size, grid_size), 0.20)
     initial_ndbi = np.full((grid_size, grid_size), 0.10)
     
@@ -89,49 +94,45 @@ if 'ndvi_layer' not in st.session_state or st.session_state.ndvi_layer.shape != 
     real_ndvi, real_ndbi = load_prebaked_miri_layers('miri_base_grid.csv', GRID_SIZE)
     st.session_state.ndvi_layer = real_ndvi
     st.session_state.ndbi_layer = real_ndbi
-    
-# Auto-heal state management system to prevent shape layout mismatches or memory crashes
-if 'ndvi_layer' not in st.session_state or st.session_state.ndvi_layer.shape != (GRID_SIZE, GRID_SIZE):
-    st.session_state.ndvi_layer = np.full((GRID_SIZE, GRID_SIZE), 0.25)
-if 'ndbi_layer' not in st.session_state or st.session_state.ndbi_layer.shape != (GRID_SIZE, GRID_SIZE):
-    st.session_state.ndbi_layer = np.full((GRID_SIZE, GRID_SIZE), 0.25)
 
-# --- MODULE 5: COORDINATE-FREE AI INFERENCE ---
-# Math step to protect against division-by-zero errors in areas with low canopy coverage
+# --- MODULE 5: COORDINATE-FREE AI INFERENCE & THERMAL TRANSLATION ---
+# Prevent division-by-zero errors in areas with minimal canopy footprint
 ratio_layer = st.session_state.ndbi_layer / (st.session_state.ndvi_layer + 1e-5)
 
-# Build the feature matrix using EXACTLY the 3 columns your new model expects
+# Build feature matrix matching exactly what the random forest regressor expects
 features_matrix = np.stack([
     st.session_state.ndvi_layer.flatten(),
     st.session_state.ndbi_layer.flatten(),
     ratio_layer.flatten()
 ], axis=1)
 
-# Generate predictions across the entire spatial web canvas simultaneously
+# Predict across the expanded spatial web canvas simultaneously
 predicted_flat = ai_model.predict(features_matrix)
 predicted_grid = predicted_flat.reshape((GRID_SIZE, GRID_SIZE))
 
-# Dynamic Delta Calculation: Relate the AI model's structural swings to the Live Weather Feed
+# Dynamic Delta Calculation: Map AI structural variances relative to the Live Weather Feed
 ai_baseline_mean = np.mean(predicted_grid)  
 spatial_deviations = predicted_grid - ai_baseline_mean
 nrt_final_heatmap = projected_base_temp + spatial_deviations
 
-# --- MODULE 6: MATPLOTLIB BICUBIC SMOOTHING ENGINE ---
+# --- MODULE 6: HEATMAP RENDER SPECTRUM CREATION (GREEN -> RED) ---
 fig, ax = plt.subplots(figsize=(8, 8))
 ax.axis('off')
 fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
 
-# Render output using an absolute temperature spectrum to eliminate hyper-sensitive color blobs
+# CHANGED: Switched to 'RdYlGn_r' (Reversed Red-Yellow-Green) 
+# High vegetation/cool areas show as Green, transition zones as Yellow, high-concrete heat islands as Red.
+VMIN_TEMP, VMAX_TEMP = 26.0, 42.0
 im = ax.imshow(
     nrt_final_heatmap, 
-    cmap='turbo', 
+    cmap='RdYlGn_r', 
     interpolation='bicubic', 
     origin='lower',
-    vmin=26.0,  # Absolute lower bound (Cool night/Canopy conditions)
-    vmax=42.0   # Absolute upper bound (Intense peak concrete heat)
+    vmin=VMIN_TEMP, 
+    vmax=VMAX_TEMP  
 )
 
-# Convert the generated figure directly into a base64 string buffer to prevent physical file saves
+# Convert figure to a base64 string buffer to prevent writing local disk files
 buf = io.BytesIO()
 fig.savefig(buf, format='png', transparent=True, bbox_inches='tight', pad_inches=0)
 buf.seek(0)
@@ -139,17 +140,39 @@ image_base64 = base64.b64encode(buf.read()).decode('utf-8')
 image_url = f"data:image/png;base64,{image_base64}"
 plt.close(fig)
 
-# --- MODULE 7: GEOGRAPHIC MAP RENDERING ---
-m = folium.Map(location=[4.393, 113.993], zoom_start=12, tiles="CartoDB positron")
+# --- MODULE 7: GEOGRAPHIC MAP & INTERACTIVE LEGEND LAYER ---
+# Center viewport dynamic mapping setup
+m = folium.Map(location=[4.415, 114.00], zoom_start=12, tiles="CartoDB positron")
 
-# Overlay the polished thermal canvas seamlessly over Miri's coordinate box bounds
+# Overlay the polished, newly colorized thermal canvas over the expanded bounds
 folium.raster_layers.ImageOverlay(
     image=image_url,
     bounds=[[LAT_MIN, LON_MIN], [LAT_MAX, LON_MAX]],
-    opacity=0.60,
+    opacity=0.55,
     interactive=False,
     cross_origin=False
 ).add_to(m)
+
+# CHANGED: Added a professional, visible on-screen color range legend
+colormap_legend = cm.LinearColormap(
+    colors=['green', 'yellow', 'red'],
+    vmin=VMIN_TEMP,
+    vmax=VMAX_TEMP,
+    caption="Microclimate Temperature Range (°C)"
+)
+colormap_legend.add_to(m)
+
+# NEW: Drop pinpoint markers for localized spot-checking when user clicks map
+if "clicked_data" in st.session_state and st.session_state.clicked_data:
+    click_lat = st.session_state.clicked_data["lat"]
+    click_lon = st.session_state.clicked_data["lon"]
+    click_temp = st.session_state.clicked_data["temp"]
+    
+    folium.Marker(
+        location=[click_lat, click_lon],
+        popup=folium.Popup(f"<b>Localized Readout:</b><br>{click_temp:.2f} °C", max_width=200),
+        icon=folium.Icon(color="darkred" if click_temp > 34 else "green", icon="thermometer", prefix="fa")
+    ).add_to(m)
 
 # Attach Leaflet drawing capability tools
 draw_control = Draw(
@@ -160,12 +183,31 @@ draw_control = Draw(
 draw_control.add_to(m)
 
 # --- MODULE 8: DUAL-PANEL VIEWPORT INTERFACE ---
-col1, col2 = st.columns([3, 1])
+col1, col2 = st.columns([3, 1], gap="medium")
 
 with col1:
-    output_map = st_folium(m, width=900, height=600, key="miri_nrt_overlay_engine")
+    # Render map and catch user interaction feeds
+    output_map = st_folium(m, width=950, height=650, key="miri_nrt_overlay_engine", use_container_width=True)
 
-# --- MODULE 9: INTERACTION COORDINATE CAPTURE LOOP (WITH SPATIAL BLENDING) ---
+# --- MODULE 9: MAP CLICK DETECTION & DRAWING INTERACTIONS ---
+# NEW: Detect Map Clicks for point temperature inspection
+if output_map and output_map.get("last_clicked"):
+    click_pos = output_map["last_clicked"]
+    click_lat, click_lon = click_pos["lat"], click_pos["lng"]
+    
+    # Check if this click position has already been processed to prevent infinite rerun loops
+    if "last_processed_click" not in st.session_state or st.session_state.last_processed_click != click_pos:
+        st.session_state.last_processed_click = click_pos
+        
+        # Translate real-world coordinate positions to internal grid matrix spaces
+        lon_idx = int(np.clip((click_lon - LON_MIN) / (LON_MAX - LON_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
+        lat_idx = int(np.clip((click_lat - LAT_MIN) / (LAT_MAX - LAT_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
+        click_temp = nrt_final_heatmap[lat_idx, lon_idx]
+        
+        st.session_state.clicked_data = {"lat": click_lat, "lon": click_lon, "temp": click_temp}
+        st.rerun()
+
+# Detect blueprint geometry drawing shapes
 if output_map and output_map.get("last_active_drawing"):
     geometry = output_map["last_active_drawing"]["geometry"]
     
@@ -183,36 +225,63 @@ if output_map and output_map.get("last_active_drawing"):
         lat_idx_max = int(np.clip((max_lat - LAT_MIN) / (LAT_MAX - LAT_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
         
         if (lon_idx_max >= lon_idx_min) and (lat_idx_max >= lat_idx_min):
-            # Define how much impact the new blueprint has on the 650m cell (30% impact)
             blend_factor = 0.30 
             
-            # Grab the existing real-world satellite values currently in those cells
+            # Grab existing tracking layers for modification
             current_ndvi_chunk = st.session_state.ndvi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1]
             current_ndbi_chunk = st.session_state.ndbi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1]
             
-            # Apply proportional blending: (70% of what was already there) + (30% of your new addition)
+            # Apply proportional blending upgrades
             st.session_state.ndvi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = \
                 (current_ndvi_chunk * (1 - blend_factor)) + (target_ndvi * blend_factor)
                 
             st.session_state.ndbi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = \
                 (current_ndbi_chunk * (1 - blend_factor)) + (target_ndbi * blend_factor)
             
+            # Reset old click selectors to prevent pinning stale coordinates on updated grids
+            if "clicked_data" in st.session_state:
+                st.session_state.clicked_data = None
+                st.session_state.last_processed_click = None
+                
             st.rerun()
 
-# --- MODULE 10: ANALYTICS REPORTING PROFILE ---
+# --- MODULE 10: CLEAN & PROFESSIONAL ANALYTICS REPORTING PROFILE ---
 with col2:
     st.subheader("📊 Live NRT Analytics")
-    current_sim_mean = np.mean(nrt_final_heatmap)
-    st.metric(label="Simulated City Mean Temp", value=f"{current_sim_mean:.2f} °C")
     
-    st.markdown("---")
-    st.markdown("Predictive Horizon Summary:")
-    st.info(f"🌐 Live Weather Feed: Connected\n\n🕒 Target Horizon: +{forecast_hour} Hour(s)\n\n🌡️ Predicted Matrix Peak: {np.max(nrt_final_heatmap):.1f}°C")
+    # Modern card formatting for key simulation metrics
+    with st.container(border=True):
+        current_sim_mean = np.mean(nrt_final_heatmap)
+        st.metric(label="Simulated City Mean Temp", value=f"{current_sim_mean:.2f} °C")
+        
+    # NEW: Dedicated container display block for the spot-inspection tool
+    with st.container(border=True):
+        st.markdown("🎯 **Localized Target Inspector**")
+        if "clicked_data" in st.session_state and st.session_state.clicked_data:
+            inspected_temp = st.session_state.clicked_data['temp']
+            st.markdown(f"**Inspected Temp:** `{inspected_temp:.2f} °C`")
+            st.caption(f"Coordinates: {st.session_state.clicked_data['lat']:.4f}, {st.session_state.clicked_data['lon']:.4f}")
+        else:
+            st.info("Click anywhere inside the thermal heatmap overlay area to extract a point microclimate reading.")
+
+    st.markdown("#### Bounding Horizon Metrics")
+    st.markdown(f"""
+    * **Live Weather Feed Status:** `Connected`
+    * **Target Forecast Horizon:** `+{forecast_hour} Hour(s)`
+    * **Matrix Peak Temperature:** **{np.max(nrt_final_heatmap):.1f}°C**
+    * **Matrix Minimum Temperature:** **{np.min(nrt_final_heatmap):.1f}°C**
+    """)
     
-    st.markdown("---")
-    if st.button("Reset Entire Urban Matrix", use_container_width=True):
+    st.divider()
+    
+    # Grid Reset Utility
+    if st.button("Reset Entire Urban Matrix", use_container_width=True, type="secondary"):
         if 'ndvi_layer' in st.session_state:
             del st.session_state['ndvi_layer']
         if 'ndbi_layer' in st.session_state:
             del st.session_state['ndbi_layer']
+        if 'clicked_data' in st.session_state:
+            del st.session_state['clicked_data']
+        if 'last_processed_click' in st.session_state:
+            del st.session_state['last_processed_click']
         st.rerun()
