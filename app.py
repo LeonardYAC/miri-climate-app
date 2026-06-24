@@ -217,8 +217,7 @@ col1, col2 = st.columns([3, 1], gap="medium")
 
 with col1:
     # Render map and catch user interaction feeds
-    output_map = st_folium(m, width=950, height=650, key="miri_nrt_overlay_engine", use_container_width=True)
-
+    output_map = st_folium(m, height=650, key="miri_nrt_overlay_engine", use_container_width=True)
 # --- MODULE 9: MAP CLICK DETECTION & DRAWING INTERACTIONS ---
 # NEW: Detect Map Clicks for point temperature inspection
 if output_map and output_map.get("last_clicked"):
