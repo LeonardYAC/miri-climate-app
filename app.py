@@ -181,7 +181,7 @@ colormap_legend = cm.LinearColormap(
 )
 colormap_legend.add_to(m)
 
-# NEW: Natively track mouse coordinates on hover in the browser (Zero Performance Cost!)
+# Natively track mouse coordinates on hover (This one is safe and won't crash the map!)
 MousePosition(
     position="bottomleft",
     separator=" | ",
@@ -190,8 +190,7 @@ MousePosition(
     prefix="Coordinates: Lat ",
 ).add_to(m)
 
-# NEW: Standard browser-side popup on click for instant spatial feedback
-folium.LatLngPopup().add_to(m)
+# REMOVED: folium.LatLngPopup().add_to(m) <- Deleting this fixes the invisible map bug!
 
 # Drop pinpoint markers for localized spot-checking when user clicks map
 if "clicked_data" in st.session_state and st.session_state.clicked_data:
