@@ -158,11 +158,12 @@ image_base64 = base64.b64encode(buf.read()).decode('utf-8')
 image_url = f"data:image/png;base64,{image_base64}"
 plt.close(fig)
 
-# --- MODULE 7: GEOGRAPHIC MAP & INTERACTIVE LEGEND LAYER ---
-# Center viewport dynamic mapping setup
+from folium.plugins import Draw, MousePosition  # Add MousePosition to your imports
+
+# --- MODULE 7: GEOGRAPHIC MAP & INTERACTIVE LAYER CONFIGURATION ---
 m = folium.Map(location=[4.415, 114.00], zoom_start=12, tiles="CartoDB positron")
 
-# Overlay the polished, newly colorized thermal canvas over the expanded bounds
+# Overlay the polished thermal canvas over the expanded bounds
 folium.raster_layers.ImageOverlay(
     image=image_url,
     bounds=[[LAT_MIN, LON_MIN], [LAT_MAX, LON_MAX]],
@@ -171,7 +172,7 @@ folium.raster_layers.ImageOverlay(
     cross_origin=False
 ).add_to(m)
 
-# CHANGED: Added a professional, visible on-screen color range legend
+# Visible on-screen color range legend
 colormap_legend = cm.LinearColormap(
     colors=['green', 'yellow', 'red'],
     vmin=VMIN_TEMP,
@@ -180,7 +181,19 @@ colormap_legend = cm.LinearColormap(
 )
 colormap_legend.add_to(m)
 
-# NEW: Drop pinpoint markers for localized spot-checking when user clicks map
+# NEW: Natively track mouse coordinates on hover in the browser (Zero Performance Cost!)
+MousePosition(
+    position="bottomleft",
+    separator=" | ",
+    empty_string="Hovering outside matrix box",
+    lng_first=False,
+    prefix="Coordinates: Lat ",
+).add_to(m)
+
+# NEW: Standard browser-side popup on click for instant spatial feedback
+folium.LatLngPopup().add_to(m)
+
+# Drop pinpoint markers for localized spot-checking when user clicks map
 if "clicked_data" in st.session_state and st.session_state.clicked_data:
     click_lat = st.session_state.clicked_data["lat"]
     click_lon = st.session_state.clicked_data["lon"]
