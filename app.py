@@ -73,12 +73,17 @@ with st.sidebar:
     
     st.header("🕹️ Object Blueprint Settings")
     blueprint_type = st.selectbox(
-        "Select Structural Placement Material:",
-        ["Dense Concrete Skyscraper Grid (High Heat Retention)", "Forest"]
+        "Select Structural Action:",
+        [
+            "Inspect Location (Click Map to View Temp)",
+            "Plant an Urban Shade Tree (Localized Pixel Cooling)",
+            "Draw a Dense Concrete Skyscraper Grid (Polygon Tool)", 
+            "Draw a Dense Tropical Forest Reserve (Polygon Tool)"
+        ]
     )
 
-    # Extract target materials based on sidebar selection
-    if blueprint_type == "Dense Concrete Skyscraper Grid (High Heat Retention)":
+    # Set targets for the polygon drawing tools
+    if "Skyscraper" in blueprint_type:
         target_ndvi, target_ndbi = 0.02, 0.55
     else:
         target_ndvi, target_ndbi = 0.88, -0.15
@@ -208,22 +213,35 @@ with col1:
     output_map = st_folium(m, width=950, height=650, key="miri_nrt_overlay_engine", use_container_width=True)
 
 # --- MODULE 9: MAP CLICK DETECTION & DRAWING INTERACTIONS ---
-# NEW: Detect Map Clicks for point temperature inspection
+# Detect Map Clicks for point interactions
 if output_map and output_map.get("last_clicked"):
     click_pos = output_map["last_clicked"]
     click_lat, click_lon = click_pos["lat"], click_pos["lng"]
     
-    # Check if this click position has already been processed to prevent infinite rerun loops
     if "last_processed_click" not in st.session_state or st.session_state.last_processed_click != click_pos:
         st.session_state.last_processed_click = click_pos
         
         # Translate real-world coordinate positions to internal grid matrix spaces
         lon_idx = int(np.clip((click_lon - LON_MIN) / (LON_MAX - LON_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
         lat_idx = int(np.clip((click_lat - LAT_MIN) / (LAT_MAX - LAT_MIN) * GRID_SIZE, 0, GRID_SIZE - 1))
-        click_temp = nrt_final_heatmap[lat_idx, lon_idx]
         
-        st.session_state.clicked_data = {"lat": click_lat, "lon": click_lon, "temp": click_temp}
-        st.rerun()
+        # ACTION A: If user is using the Tree Planting tool, mutate the grid!
+        if blueprint_type == "Plant an Urban Shade Tree (Localized Pixel Cooling)":
+            # Boost vegetation (NDVI) and drop concrete structure (NDBI) at the exact clicked pixel
+            # We use np.clip to keep the values within safe scientific satellite limits
+            st.session_state.ndvi_layer[lat_idx, lon_idx] = np.clip(st.session_state.ndvi_layer[lat_idx, lon_idx] + 0.35, 0.0, 0.90)
+            st.session_state.ndbi_layer[lat_idx, lon_idx] = np.clip(st.session_state.ndbi_layer[lat_idx, lon_idx] - 0.25, -0.3, 0.90)
+            
+            # Clear previous inspector readout to let the map refresh cleanly
+            st.session_state.clicked_data = None
+            st.toast("🌳 Tree Canopy planted successfully! Recalculating microclimate...", icon="🌱")
+            st.rerun()
+            
+        # ACTION B: Otherwise, just inspect the temperature like normal
+        else:
+            click_temp = nrt_final_heatmap[lat_idx, lon_idx]
+            st.session_state.clicked_data = {"lat": click_lat, "lon": click_lon, "temp": click_temp}
+            st.rerun()
 
 # Detect blueprint geometry drawing shapes
 if output_map and output_map.get("last_active_drawing"):
