@@ -76,9 +76,9 @@ with st.sidebar:
         "Select Structural Action:",
         [
             "Inspect Location (Click Map to View Temp)",
-            "Plant an Urban Shade Tree (Localized Pixel Cooling)",
-            "Draw a Dense Concrete Skyscraper Grid (Polygon Tool)", 
-            "Draw a Dense Tropical Forest Reserve (Polygon Tool)"
+            "Plant a Tree (Localized Pixel Cooling)",
+            "Draw a Skyscraper Grid (Polygon Tool)", 
+            "Draw a Forest (Polygon Tool)"
         ]
     )
 
