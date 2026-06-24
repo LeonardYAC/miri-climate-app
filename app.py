@@ -74,14 +74,14 @@ with st.sidebar:
     st.header("🕹️ Object Blueprint Settings")
     blueprint_type = st.selectbox(
         "Select Structural Placement Material:",
-        ["Dense Concrete Skyscraper Grid (High Heat Retention)", "Urban Green Canopy Park (Cooling Infrastructure)"]
+        ["Dense Concrete Skyscraper Grid (High Heat Retention)", "Forest"]
     )
 
     # Extract target materials based on sidebar selection
     if blueprint_type == "Dense Concrete Skyscraper Grid (High Heat Retention)":
         target_ndvi, target_ndbi = 0.02, 0.55
     else:
-        target_ndvi, target_ndbi = 0.65, -0.05
+        target_ndvi, target_ndbi = 0.88, -0.15
 
 # --- MODULE 4: GEOGRAPHIC GRID & STATE MANAGEMENT ---
 # EXPANDED BOUNDS: Increased the geographic catch-area for the map
