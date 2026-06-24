@@ -117,28 +117,22 @@ if 'ndvi_layer' not in st.session_state or st.session_state.ndvi_layer.shape != 
 # Prevent division-by-zero errors in areas with minimal canopy footprint
 ratio_layer = st.session_state.ndbi_layer / (st.session_state.ndvi_layer + 1e-5)
 
-# Build feature matrix
+# Build feature matrix matching exactly what the random forest regressor expects
 features_matrix = np.stack([
     st.session_state.ndvi_layer.flatten(),
     st.session_state.ndbi_layer.flatten(),
     ratio_layer.flatten()
 ], axis=1)
 
-# FIX: Convert the numpy array to a DataFrame with explicit feature names
-# IMPORTANT: Make sure these names perfectly match the column headers used in your training script!
-features_df = pd.DataFrame(
-    features_matrix, 
-    columns=['ndvi', 'ndbi', 'ratio']  # If you used uppercase or different names during training, change them here
-)
-
-# Predict using the named DataFrame instead of the raw array
-predicted_flat = ai_model.predict(features_df)
+# Predict across the expanded spatial web canvas simultaneously
+predicted_flat = ai_model.predict(features_matrix)
 predicted_grid = predicted_flat.reshape((GRID_SIZE, GRID_SIZE))
 
-# Dynamic Delta Calculation
+# Dynamic Delta Calculation: Map AI structural variances relative to the Live Weather Feed
 ai_baseline_mean = np.mean(predicted_grid)  
 spatial_deviations = predicted_grid - ai_baseline_mean
 nrt_final_heatmap = projected_base_temp + spatial_deviations
+
 # --- MODULE 6: HEATMAP RENDER SPECTRUM CREATION (GREEN -> RED) ---
 fig, ax = plt.subplots(figsize=(8, 8))
 ax.axis('off')
@@ -187,7 +181,7 @@ colormap_legend = cm.LinearColormap(
 )
 colormap_legend.add_to(m)
 
-# Natively track mouse coordinates on hover in the browser (Zero Performance Cost!)
+# NEW: Natively track mouse coordinates on hover in the browser (Zero Performance Cost!)
 MousePosition(
     position="bottomleft",
     separator=" | ",
@@ -195,6 +189,9 @@ MousePosition(
     lng_first=False,
     prefix="Coordinates: Lat ",
 ).add_to(m)
+
+# NEW: Standard browser-side popup on click for instant spatial feedback
+folium.LatLngPopup().add_to(m)
 
 # Drop pinpoint markers for localized spot-checking when user clicks map
 if "clicked_data" in st.session_state and st.session_state.clicked_data:
@@ -220,15 +217,16 @@ draw_control.add_to(m)
 col1, col2 = st.columns([3, 1], gap="medium")
 
 with col1:
-    # Render map and catch user interaction feeds (using auto-container stretching)
-    output_map = st_folium(m, height=650, key="miri_nrt_overlay_engine", use_container_width=True)
+    # Render map and catch user interaction feeds
+    output_map = st_folium(m, width=950, height=650, key="miri_nrt_overlay_engine", use_container_width=True)
 
 # --- MODULE 9: MAP CLICK DETECTION & DRAWING INTERACTIONS ---
-# Detect Map Clicks for point temperature inspection
+# NEW: Detect Map Clicks for point temperature inspection
 if output_map and output_map.get("last_clicked"):
     click_pos = output_map["last_clicked"]
     click_lat, click_lon = click_pos["lat"], click_pos["lng"]
     
+    # Check if this click position has already been processed to prevent infinite rerun loops
     if "last_processed_click" not in st.session_state or st.session_state.last_processed_click != click_pos:
         st.session_state.last_processed_click = click_pos
         
@@ -260,15 +258,18 @@ if output_map and output_map.get("last_active_drawing"):
         if (lon_idx_max >= lon_idx_min) and (lat_idx_max >= lat_idx_min):
             blend_factor = 0.30 
             
+            # Grab existing tracking layers for modification
             current_ndvi_chunk = st.session_state.ndvi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1]
             current_ndbi_chunk = st.session_state.ndbi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1]
             
+            # Apply proportional blending upgrades
             st.session_state.ndvi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = \
                 (current_ndvi_chunk * (1 - blend_factor)) + (target_ndvi * blend_factor)
                 
             st.session_state.ndbi_layer[lat_idx_min:lat_idx_max + 1, lon_idx_min:lon_idx_max + 1] = \
                 (current_ndbi_chunk * (1 - blend_factor)) + (target_ndbi * blend_factor)
             
+            # Reset old click selectors to prevent pinning stale coordinates on updated grids
             if "clicked_data" in st.session_state:
                 st.session_state.clicked_data = None
                 st.session_state.last_processed_click = None
@@ -279,10 +280,12 @@ if output_map and output_map.get("last_active_drawing"):
 with col2:
     st.subheader("📊 Live NRT Analytics")
     
+    # Modern card formatting for key simulation metrics
     with st.container(border=True):
         current_sim_mean = np.mean(nrt_final_heatmap)
         st.metric(label="Simulated City Mean Temp", value=f"{current_sim_mean:.2f} °C")
         
+    # NEW: Dedicated container display block for the spot-inspection tool
     with st.container(border=True):
         st.markdown("🎯 **Localized Target Inspector**")
         if "clicked_data" in st.session_state and st.session_state.clicked_data:
@@ -290,7 +293,7 @@ with col2:
             st.markdown(f"**Inspected Temp:** `{inspected_temp:.2f} °C`")
             st.caption(f"Coordinates: {st.session_state.clicked_data['lat']:.4f}, {st.session_state.clicked_data['lon']:.4f}")
         else:
-            st.info("Click inside the heatmap matrix box to extract a spot microclimate reading.")
+            st.info("Click anywhere inside the thermal heatmap overlay area to extract a point microclimate reading.")
 
     st.markdown("#### Bounding Horizon Metrics")
     st.markdown(f"""
@@ -302,6 +305,7 @@ with col2:
     
     st.divider()
     
+    # Grid Reset Utility
     if st.button("Reset Entire Urban Matrix", use_container_width=True, type="secondary"):
         if 'ndvi_layer' in st.session_state:
             del st.session_state['ndvi_layer']
